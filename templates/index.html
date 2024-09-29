@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KMeans Clustering</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+        .plot {
+            margin: 20px auto;
+        }
+        button {
+            margin: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>KMeans Clustering Algorithm</h1>
+    
+    <label for="k-value">Number of Clusters (k): </label>
+    <input id="k-value" type="number" value="3" min="1" max="10">
+    
+    <br><br>
+    
+    <label for="init-method">Initialization Method: </label>
+    <select id="init-method">
+        <option value="random">Random</option>
+        <option value="farthest">Farthest First</option>
+        <option value="kmeans++">KMeans++</option>
+        <option value="manual">Manual</option>
+    </select>
+    
+    <br><br>
+    
+    <button onclick="generateNewDataset()">Generate New Dataset</button>
+    <button onclick="stepThroughKMeans()">Step Through KMeans</button>
+    <button onclick="runToConvergence()">Run to Convergence</button>
+    <button onclick="resetAlgorithm()">Reset Algorithm</button>
+    
+    <svg class="plot" width="500" height="500"></svg>
+
+    <script>
+        let dataPoints = [];
+        let centroids = [];
+        const svg = d3.select(".plot");
+
+        // Generate new dataset
+        function generateNewDataset() {
+            d3.json('/generate_dataset').then(data => {
+                dataPoints = data;
+                drawDataPoints();
+            });
+        }
+
+        // Draw data points on the plot
+        function drawDataPoints() {
+            svg.selectAll("*").remove();
+            svg.selectAll("circle")
+                .data(dataPoints)
+                .enter()
+                .append("circle")
+                .attr("cx", d => d[0] * 20 + 250)
+                .attr("cy", d => d[1] * 20 + 250)
+                .attr("r", 3)
+                .style("fill", "steelblue");
+        }
+
+        // Step through KMeans clustering (mock example for now)
+        function stepThroughKMeans() {
+            const k = document.getElementById('k-value').value;
+            d3.json('/run_kmeans', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ k: k })
+            }).then(data => {
+                centroids = data.centroids;
+                drawCentroids();
+            });
+        }
+
+        // Draw centroids
+        function drawCentroids() {
+            svg.selectAll(".centroid").remove();
+            svg.selectAll(".centroid")
+                .data(centroids)
+                .enter()
+                .append("circle")
+                .attr("cx", d => d[0] * 20 + 250)
+                .attr("cy", d => d[1] * 20 + 250)
+                .attr("r", 5)
+                .style("fill", "red")
+                .attr("class", "centroid");
+        }
+
+        // Run KMeans to convergence (for simplicity, calling step function)
+        function runToConvergence() {
+            stepThroughKMeans(); // For now, step once, you can loop over KMeans steps here
+        }
+
+        // Reset the algorithm and plot
+        function resetAlgorithm() {
+            svg.selectAll("*").remove();
+            dataPoints = [];
+            centroids = [];
+        }
+
+        // Generate initial dataset on load
+        generateNewDataset();
+    </script>
+</body>
+</html>
