@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KMeans Clustering</title>
+    <title>KMeans Clustering Algorithm</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         body {
@@ -20,12 +20,12 @@
 </head>
 <body>
     <h1>KMeans Clustering Algorithm</h1>
-    
+
     <label for="k-value">Number of Clusters (k): </label>
     <input id="k-value" type="number" value="3" min="1" max="10">
-    
+
     <br><br>
-    
+
     <label for="init-method">Initialization Method: </label>
     <select id="init-method">
         <option value="random">Random</option>
@@ -33,22 +33,24 @@
         <option value="kmeans++">KMeans++</option>
         <option value="manual">Manual</option>
     </select>
-    
+
     <br><br>
-    
-    <button onclick="generateNewDataset()">Generate New Dataset</button>
+
     <button onclick="stepThroughKMeans()">Step Through KMeans</button>
     <button onclick="runToConvergence()">Run to Convergence</button>
+    <button onclick="generateNewDataset()">Generate New Dataset</button>
     <button onclick="resetAlgorithm()">Reset Algorithm</button>
-    
+
     <svg class="plot" width="500" height="500"></svg>
 
     <script>
         let dataPoints = [];
         let centroids = [];
-        let manualCentroids = [];
-        let isManualInit = false;
-        let clusterColors = d3.schemeCategory10; // Use D3's color scheme for clusters
+        let clusters = [];
+        let currentStep = 0; // Track the current step in the algorithm
+        let isConverged = false; // Flag for convergence
+        let maxIterations = 10; // Maximum iterations for KMeans
+        let clusterColors = d3.schemeCategory10;
         const svg = d3.select(".plot");
 
         // Generate new dataset
@@ -56,7 +58,18 @@
             d3.json('/generate_dataset').then(data => {
                 dataPoints = data;
                 drawDataPoints();
+                resetKMeansState();
             });
+        }
+
+        // Reset the KMeans algorithm state
+        function resetKMeansState() {
+            currentStep = 0;
+            isConverged = false;
+            centroids = [];
+            clusters = [];
+            drawDataPoints();
+            svg.selectAll(".centroid").remove();
         }
 
         // Draw data points on the plot
@@ -72,90 +85,38 @@
                 .style("fill", "steelblue");
         }
 
-        // Step through KMeans clustering with selected initialization method
+        // Step through the KMeans algorithm
         function stepThroughKMeans() {
             const k = document.getElementById('k-value').value;
             const initMethod = document.getElementById('init-method').value;
 
-            // If manual method is selected, enable manual initialization
-            if (initMethod === 'manual') {
-                enableManualInit();
+            if (isConverged || currentStep >= maxIterations) {
+                alert("KMeans has converged or reached the maximum number of iterations.");
                 return;
             }
 
-            // Otherwise, proceed with normal initialization
-            d3.json('/run_kmeans', {
+            d3.json('/run_kmeans_step', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     k: k,
                     initMethod: initMethod,
-                    data: dataPoints
-                })
-            }).then(data => {
-                centroids = data.centroids;
-                drawCentroids();
-                updateClusters(data.clusters);  // Call to color points based on clusters
-            });
-        }
-
-        // Enable manual initialization
-        function enableManualInit() {
-            manualCentroids = [];
-            isManualInit = true;
-            d3.select(".plot").on("click", addManualCentroid);
-        }
-
-        // Add a centroid at the click location
-        function addManualCentroid() {
-            if (!isManualInit) return;
-            
-            const [x, y] = d3.mouse(this);
-            const scaledX = (x - 250) / 20;
-            const scaledY = (y - 250) / 20;
-
-            manualCentroids.push([scaledX, scaledY]);
-            drawManualCentroid(x, y);
-
-            const k = document.getElementById('k-value').value;
-            if (manualCentroids.length === parseInt(k)) {
-                isManualInit = false;
-                d3.select(".plot").on("click", null);
-                runKMeansWithManualCentroids();
-            }
-        }
-
-        // Draw the manually selected centroid
-        function drawManualCentroid(x, y) {
-            svg.append("circle")
-                .attr("cx", x)
-                .attr("cy", y)
-                .attr("r", 5)
-                .style("fill", "red")
-                .attr("class", "manual-centroid");
-        }
-
-        // Run KMeans using the manually selected centroids
-        function runKMeansWithManualCentroids() {
-            const k = document.getElementById('k-value').value;
-            
-            d3.json('/run_kmeans', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    k: k,
-                    initMethod: 'manual',
                     data: dataPoints,
-                    manualCentroids: manualCentroids
+                    currentStep: currentStep
                 })
             }).then(data => {
                 centroids = data.centroids;
+                clusters = data.clusters;
+                isConverged = data.converged;
+                currentStep += 1;
+
+                // Update the plot with new centroids and clusters
                 drawCentroids();
-                updateClusters(data.clusters);  // Update clusters for visualization
+                updateClusters(clusters);
             });
         }
 
-        // Draw centroids
+        // Draw the centroids on the plot
         function drawCentroids() {
             svg.selectAll(".centroid").remove();
             svg.selectAll(".centroid")
@@ -164,7 +125,7 @@
                 .append("circle")
                 .attr("cx", d => d[0] * 20 + 250)
                 .attr("cy", d => d[1] * 20 + 250)
-                .attr("r", 7)  // Larger radius for centroids
+                .attr("r", 7) // Larger radius for centroids
                 .style("fill", "red")
                 .attr("class", "centroid");
         }
@@ -173,24 +134,28 @@
         function updateClusters(clusters) {
             svg.selectAll("circle")
                 .data(dataPoints)
-                .transition()  // Smooth transition for color change
+                .transition() // Smooth transition for cluster updates
                 .duration(500)
-                .attr("fill", (d, i) => clusterColors[clusters[i]]);  // Color points based on cluster
+                .attr("fill", (d, i) => clusterColors[clusters[i]]);
         }
 
-        // Run KMeans to convergence
+        // Run KMeans to convergence by stepping through each iteration
         function runToConvergence() {
-            stepThroughKMeans();
+            const interval = setInterval(() => {
+                if (isConverged || currentStep >= maxIterations) {
+                    clearInterval(interval); // Stop if converged or max iterations reached
+                } else {
+                    stepThroughKMeans();
+                }
+            }, 1000); // Run one step per second
         }
 
         // Reset the algorithm and plot
         function resetAlgorithm() {
-            svg.selectAll("*").remove();
-            dataPoints = [];
-            centroids = [];
+            resetKMeansState();
         }
 
-        // Generate initial dataset on load
+        // Generate the initial dataset on load
         generateNewDataset();
     </script>
 </body>
