@@ -43,8 +43,8 @@ def run_kmeans_step():
     clusters = assign_to_clusters(data, centroids)
     new_centroids = update_centroids(data, clusters, k)
 
-    # Check if the algorithm has converged
-    converged = np.all(centroids == new_centroids)
+    # Check if the centroids have converged (small distance threshold)
+    converged = np.all(np.linalg.norm(new_centroids - centroids, axis=1) < 1e-4)
 
     # Update the stored centroids
     session['centroids'] = new_centroids.tolist()
@@ -97,4 +97,3 @@ def index():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=3000, debug=True)
-

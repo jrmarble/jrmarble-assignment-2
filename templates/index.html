@@ -25,7 +25,6 @@
     <br><br>
 
     <button onclick="generateNewDataset()">Generate New Dataset</button>
-    <button onclick="initializeKMeans()">Start KMeans</button>
     <button onclick="stepThroughKMeans()">Step Through KMeans</button>
     <button onclick="runToConvergence()">Run to Convergence</button>
     <button onclick="resetAlgorithm()">Reset Algorithm</button>
@@ -41,53 +40,114 @@
         let isConverged = false;
         let manualCentroids = [];  // Store manually selected centroids
         let isManualMode = false;  // Flag to enable manual centroid selection
+        let isCentroidsInitialized = false;  // Flag to check if centroids are initialized
 
         // Function to generate a new random dataset
         function generateNewDataset() {
             dataPoints = generateRandomData(); // Generate new dataset
             plotKMeans(dataPoints, [], []); // Initial plot without centroids
+            resetAlgorithm(false); // Reset centroids and clusters
         }
 
-        // Initialize KMeans with the selected initialization method
-        function initializeKMeans() {
-            const initMethod = document.getElementById('init-method').value;
+        function stepThroughKMeans() {
+            if (!isCentroidsInitialized) {
+                initializeCentroidsOnFirstStep(); // Initialize centroids on the first step
+                return; // After initializing, stop to allow the user to step through manually
+            }
 
-            // Reset KMeans state but don't regenerate dataset
-            resetAlgorithm(false);
+             if (isConverged || currentStep >= maxIterations) {
+                alert('KMeans has reached convergence or maximum iterations.');
+                return;
+            }
+
+            // Perform one iteration of KMeans (assignment + update centroids)
+            const newClusters = updateClusterAssignments(dataPoints, centroids);
+            const newCentroids = updateCentroids(dataPoints, newClusters);
+
+            // Plot the updated centroids and clusters after this single step
+            plotKMeans(dataPoints, newCentroids, newClusters);
+
+            // Update the global variables for centroids and clusters
+            centroids = newCentroids;
+            clusters = newClusters;
+            currentStep++;
+
+            // Check for convergence
+            if (checkConvergence(centroids, newCentroids)) {
+                isConverged = true;
+                alert('KMeans has converged!');
+            }
+        }
+
+        function initializeCentroidsOnFirstStep() {
+            const initMethod = document.getElementById('init-method').value;
 
             if (initMethod === 'manual') {
                 enableManualInit();
             } else {
-                centroids = initializeCentroids(initMethod);
-                plotKMeans(dataPoints, centroids, []); // Initial plot with centroids
+                centroids = initializeCentroids(initMethod);  // Initialize centroids only
+                plotKMeans(dataPoints, centroids, []);  // Plot data points and centroids
+                isCentroidsInitialized = true;  // Mark centroids as initialized
             }
         }
 
-        // Enable manual centroid selection
-        function enableManualInit() {
-            isManualMode = true;
-            manualCentroids = [];
-            alert('Click on the plot to select centroids');
-            document.getElementById('kmeans-plot').onclick = function (event) {
-                if (!isManualMode) return;
+        function runToConvergence() {
+            if (!isCentroidsInitialized) {
+                initializeCentroidsOnFirstStep();  // Initialize centroids if not done
+            }
 
-                const rect = event.target.getBoundingClientRect();
-                const x = ((event.clientX - rect.left) / rect.width) * 20 - 10; // Scale the click x-coordinate
-                const y = ((event.clientY - rect.top) / rect.height) * 20 - 10; // Scale the click y-coordinate
-                manualCentroids.push([x, y]);
-
-                // Plot the selected centroids
-                plotKMeans(dataPoints, manualCentroids, []);
-
-                const k = parseInt(document.getElementById('k-value').value);
-                if (manualCentroids.length === k) {
-                    isManualMode = false;  // Disable further clicks after k centroids
-                    centroids = manualCentroids;
-                    document.getElementById('kmeans-plot').onclick = null;  // Disable click events
-                    alert('Manual initialization complete! Proceed with KMeans.');
+            const interval = setInterval(() => {
+                if (isConverged || currentStep >= maxIterations) {
+                    clearInterval(interval);
+                    alert('KMeans has reached convergence or maximum iterations.');
+                } else {
+                    stepThroughKMeans();
                 }
-            };
+            }, 1000); // Step through every second
         }
+
+        function enableManualInit() {
+        isManualMode = true;
+        manualCentroids = [];
+        alert('Click on the plot to select centroids');
+
+        // Add an event listener to the plot for manual centroid selection
+        document.getElementById('kmeans-plot').onclick = function (event) {
+            if (!isManualMode) return;
+
+            const plot = document.getElementById('kmeans-plot');
+            const rect = plot.getBoundingClientRect();
+            
+            // Get the plot's dimensions and mouse position relative to the plot
+            const xClick = (event.clientX - rect.left) / rect.width; // Scaled click x-coordinate (0 to 1)
+            const yClick = 1 - (event.clientY - rect.top) / rect.height; // Scaled click y-coordinate (0 to 1)
+
+            // Assume that the dataset is within a known range, say from [minX, maxX] and [minY, maxY]
+            const minX = Math.min(...dataPoints.map(p => p[0]));
+            const maxX = Math.max(...dataPoints.map(p => p[0]));
+            const minY = Math.min(...dataPoints.map(p => p[1]));
+            const maxY = Math.max(...dataPoints.map(p => p[1]));
+
+            // Convert the click coordinates to data space coordinates
+            const x = xClick * (maxX - minX) + minX;
+            const y = yClick * (maxY - minY) + minY;
+
+            // Add the clicked point as a new centroid
+            manualCentroids.push([x, y]);
+
+            // Plot the selected centroids
+            plotKMeans(dataPoints, manualCentroids, []);
+
+            const k = parseInt(document.getElementById('k-value').value);
+            if (manualCentroids.length === k) {
+                isManualMode = false;  // Disable further clicks after k centroids
+                centroids = manualCentroids;
+                document.getElementById('kmeans-plot').onclick = null;  // Disable click events
+                isCentroidsInitialized = true;  // Mark centroids as initialized
+                alert('Manual initialization complete! Proceed with KMeans.');
+            }
+        };
+    }
 
         function plotKMeans(points, centroids, clusters) {
             const tracePoints = {
@@ -121,37 +181,6 @@
             };
 
             Plotly.newPlot('kmeans-plot', [tracePoints, traceCentroids], layout);
-        }
-
-        function stepThroughKMeans() {
-            if (isConverged || currentStep >= maxIterations) {
-                alert('KMeans has reached convergence or maximum iterations.');
-                return;
-            }
-
-            const newClusters = updateClusterAssignments(dataPoints, centroids);
-            const newCentroids = updateCentroids(dataPoints, newClusters);
-
-            plotKMeans(dataPoints, newCentroids, newClusters); // Update the plot
-            currentStep++;
-            centroids = newCentroids; // Update global centroids
-            clusters = newClusters; // Update global clusters
-
-            if (checkConvergence(centroids, newCentroids)) {
-                isConverged = true;
-                alert('KMeans has converged!');
-            }
-        }
-
-        function runToConvergence() {
-            const interval = setInterval(() => {
-                if (isConverged || currentStep >= maxIterations) {
-                    clearInterval(interval);
-                    alert('KMeans has reached convergence or maximum iterations.');
-                } else {
-                    stepThroughKMeans();
-                }
-            }, 1000); // Step through every second
         }
 
         // Functions to generate data, initialize centroids, update cluster assignments
@@ -250,18 +279,20 @@
                 return euclideanDistance(centroid, newCentroids[i]) < 0.001;
             });
         }
-
-        // Reset the algorithm and plot, but keep the dataset intact
+        
         function resetAlgorithm() {
-            currentStep = 0;
-            isConverged = false;
-            centroids = [];
-            clusters = [];
-            manualCentroids = [];
-            isManualMode = false;
-            // Re-plot only the dataset, keeping the current data points visible
-            plotKMeans(dataPoints, [], []); // Clear centroids and clusters, but keep dataset
+        currentStep = 0;
+        isConverged = false;
+        centroids = [];
+        clusters = [];
+        manualCentroids = [];
+        isManualMode = false;
+        isCentroidsInitialized = false;  // Reset centroids initialization state
+
+        // Re-plot the dataset, clearing only centroids and clusters
+        plotKMeans(dataPoints, [], []);  // Keep dataPoints, but remove centroids and clusters
         }
+
     </script>
 </body>
 </html>
