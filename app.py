@@ -1,5 +1,5 @@
 import numpy as np
-from flask import Flask, jsonify, request, session
+from flask import Flask, jsonify, request, session, render_template
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'  # Needed if you plan to use sessions
@@ -90,6 +90,10 @@ def kmeans_plus_plus_initialization(data, k):
         next_centroid = data[np.random.choice(len(data), p=probabilities)]
         centroids.append(next_centroid)
     return np.array(centroids)
+
+@app.route('/')
+def index():
+    return render_template('index.html')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=3000, debug=True)
