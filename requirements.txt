@@ -1,1 +1,3 @@
-pip install flask numpy matplotlib
+flask
+numpy
+matplotlib
